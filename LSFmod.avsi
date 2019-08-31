@@ -8,7 +8,7 @@
 ###                                                                                          ###
 ###                            another Modded Version by A.SONY.                             ###
 ###                                                                                          ###
-###                                   v2.16 - 20 July 2019                                   ###
+###                                   v2.183 - 31 Aug 2019                                   ###
 ###                                                                                          ###
 ################################################################################################
 ###
@@ -16,8 +16,12 @@
 ### | CHANGELOG |
 ### +-----------+
 ###
+### v2.183 : - fix bugs when show=true cases
+###
+### v2.18 : - fix upscale, i.e. dest_x or dest_y are larger than the input clip
+###
 ### v2.12 : - HBD in avs+
-###        - some fixes
+###         - some fixes
 ###
 ### v1.9 : - tweaked settings
 ###        - default preset is now defaults="fast" /!\
@@ -409,26 +413,15 @@ function LSFmod( clip inclip, float "strength", int "Smode", int "Smethod", int 
 {
 
 sisphbd = AvsPlusVersionNumber > 2294
- 
-sislumaonly = sisphbd ? inclip.isy() : VersionNumber() < 2.6 ? true : inclip.isy8()
- 
-input = sislumaonly ? inclip : sisphbd ? inclip.converttoy() : inclip.converttoy8()
-
-input = defined(source) ? input.pointresize(width(input),height(input)+8,0,-4,width(input),height(input)+8.0001) : input
-
-source = defined(source) ? sislumaonly ? source : sisphbd ? source.converttoy() : source.converttoy8() : source
-
-source = defined(source) ? source.pointresize(width(source),height(source)+8,0,-4,width(source),height(source)+8.0001) : source
 
 ### DEFAULTS
-version  = "v2.1"
+version  = "v2.182"
 defaults = default(defaults,"fast")
 num      = defaults=="old" ? 0 : defaults=="slow" ? 1 : defaults=="fast" ? 2 : 3
 
-ox = input.width
-oy = input.height
+ox = inclip.width
+oy = inclip.height
 
-Assert(!isYUY2(input), chr(10) + "not work with an YUY2 clip !" + chr(10))
 Assert(num         != 3      ? true : false, chr(10) + """Defaults must be "old" or "slow" or "fast" !""" + chr(10))
 
 strength    = default( strength,    Select(num,                100 ,                100 ,                100 ) )
@@ -494,6 +487,23 @@ yys  = round(oy*ss_y/8)*8
 
 str  = float(strength)/100.0
 
+sisyuy2 = inclip.isyuy2()
+
+sisupscale = (dest_x != ox || dest_y != oy)
+
+inclip = !sisupscale && sisyuy2 && sisphbd ? inclip.converttoyv16() : inclip
+
+sislumaonly = sisphbd ? inclip.isy() : VersionNumber() < 2.6 ? true : inclip.isy8()
+ 
+input = sisupscale || sislumaonly ? inclip : sisphbd ? inclip.converttoy() : inclip.converttoy8()
+
+input = defined(source) && !sisupscale ? input.pointresize(width(input),height(input)+8,0,-4,width(input),height(input)+8.0001) : input
+
+source = defined(source) ? sisupscale || sislumaonly ? source : sisphbd ? source.converttoy() : source.converttoy8() : source
+
+source = defined(source) && !sisupscale ? source.pointresize(width(source),height(source)+8,0,-4,width(source),height(source)+8.0001) : source
+
+Assert(!isYUY2(input), chr(10) + "not work with an YUY2 clip !" + chr(10))
 
 ### SHARP
 tmp  = ss_x > 1.0 || ss_y > 1.0 ? input.spline36resize(xxs,yys) : input
@@ -585,19 +595,19 @@ PP2 = soothe ? mt_makediff(tmp,diff3,U=1,V=1) : PP1
 
 
 ### OUTPUT
-out = (dest_x != ox || dest_y != oy) ? tmp.mergeluma(PP2).spline36resize(dest_x,dest_y)
+out = sisupscale ? tmp.mergeluma(PP2).spline36resize(dest_x,dest_y)
 \   : (ss_x > 1.0 || ss_y > 1.0)     ? input.mergeluma(PP2.spline36resize(dest_x,dest_y))
 \   :                                  input.mergeluma(PP2)
 
-src = defined(source)==false         ? blankclip
-\   : (dest_x != ox || dest_y != oy) ? source.spline36resize(dest_x,dest_y)
+src = defined(source)==false         ? nop()
+\   : sisupscale ? source.spline36resize(dest_x,dest_y)
 \   :                                  source
-in  = (dest_x != ox || dest_y != oy) ? input.spline36resize(dest_x,dest_y)
+in  = sisupscale ? input.spline36resize(dest_x,dest_y)
 \   :                                  input
 
 shrpD  = mt_makediff(in,out,U=1,V=1)
-shrpL  = VersionNumber() < 2.6 ? shrpD.repair(mt_makediff(in,src,U=1,V=1),1,-1,-1).mt_lutxy(shrpD,"x 128 - abs y 128 - abs < x y ?",U=1,V=1) \
-			       : shrpD.repair(mt_makediff(in,src,U=1,V=1),1,-1,-1).mt_lutxy(shrpD,"x range_half - abs y range_half - abs < x y ?",use_expr=1,U=1,V=1)
+shrpL  = defined(source) ? VersionNumber() < 2.6 ? shrpD.repair(mt_makediff(in,src,U=1,V=1),1,-1,-1).mt_lutxy(shrpD,"x 128 - abs y 128 - abs < x y ?",U=1,V=1) \
+			       : shrpD.repair(mt_makediff(in,src,U=1,V=1),1,-1,-1).mt_lutxy(shrpD,"x range_half - abs y range_half - abs < x y ?",use_expr=1,U=1,V=1) : nop()
 output = defined(source) ? mt_makediff(in,shrpL,U=2,V=2)
 \      :                   out
 
@@ -699,7 +709,7 @@ output = edgemode!=-1    ? output
 
 output = defined(source) ? output.crop(0,4,-0,-4) : output
 
-output = sislumaonly ? output : sisphbd ? CombinePlanes(output,inclip,planes="YUV",sample_clip=inclip) : ytouv(inclip.utoy8(),inclip.vtoy8(),output)
+output = sisupscale || sislumaonly ? output : sisphbd ? CombinePlanes(output,inclip,planes="YUV",sample_clip=inclip) : ytouv(inclip.utoy8(),inclip.vtoy8(),output)
 
 output = show==false ? output
 \                    : LSFM_Show(inclip, output, version, defaults,
@@ -711,6 +721,8 @@ output = show==false ? output
 \                                edgemode, edgemaskHQ,
 \                                ss_x, ss_y, dest_x, dest_y,
 \                                show, screenW, screenH)
+
+output = sisyuy2 ? output.converttoyuy2() : output
 
 return output
 }
