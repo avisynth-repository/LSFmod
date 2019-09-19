@@ -8,13 +8,15 @@
 ###                                                                                          ###
 ###                            another Modded Version by A.SONY.                             ###
 ###                                                                                          ###
-###                                   v2.183 - 31 Aug 2019                                   ###
+###                                v2.184 - 18 September 2019                                ###
 ###                                                                                          ###
 ################################################################################################
 ###
 ### +-----------+
 ### | CHANGELOG |
 ### +-----------+
+###
+### v2.184 : - some fix when using soruce and make sure it will not work with RGB
 ###
 ### v2.183 : - fix bugs when show=true cases
 ###
@@ -78,7 +80,7 @@
 ### -> Removegrain  (v1.0pre or up)
 ### -> Warpsharp    (2003.11.03 or up) [for Smode=1]
 ### -> Variableblur (v0.30 or up)      [for Smode=2]
-### -> if you use avs+ then make sure it's it the last one
+### -> if you use avs+ then make sure it's the last one
 ###
 ###
 ###
@@ -415,7 +417,7 @@ function LSFmod( clip inclip, float "strength", int "Smode", int "Smethod", int 
 sisphbd = AvsPlusVersionNumber > 2294
 
 ### DEFAULTS
-version  = "v2.182"
+version  = "v2.184"
 defaults = default(defaults,"fast")
 num      = defaults=="old" ? 0 : defaults=="slow" ? 1 : defaults=="fast" ? 2 : 3
 
@@ -459,6 +461,7 @@ show        = default( show,        Select(num,              false ,            
 screenW     = default( screenW,     Select(num,               1280 ,               1280 ,               1280 ) )
 screenH     = default( screenH,     Select(num,               1024 ,               1024 ,               1024 ) )
 
+Assert(!isRGB(inclip), chr(10) + "LSFmod: not work with an RGB clip !" + chr(10))
 Assert( ( strength >= 0 )                                                ? true : false, chr(10) + "'strength' have not a correct value! [>=0]" + chr(10))
 Assert( ( Smode >= 1 && Smode <= 5 )                                     ? true : false, chr(10) + "'Smode' have not a correct value! [1,2,3,4,5]" + chr(10))
 Assert( ( Smethod >= 1 && Smethod <= 4 )                                 ? true : false, chr(10) + "'Smethod' have not a correct value! [1,2,3,4]" + chr(10))
@@ -489,29 +492,29 @@ str  = float(strength)/100.0
 
 sisyuy2 = inclip.isyuy2()
 
+sisavs26 = !(VersionNumber() < 2.6)
+
 sisupscale = (dest_x != ox || dest_y != oy)
 
 inclip = !sisupscale && sisyuy2 && sisphbd ? inclip.converttoyv16() : inclip
 
-sislumaonly = sisphbd ? inclip.isy() : VersionNumber() < 2.6 ? true : inclip.isy8()
+sislumaonly = sisphbd ? inclip.isy() : sisavs26 ? inclip.isy8() : true
  
 input = sisupscale || sislumaonly ? inclip : sisphbd ? inclip.converttoy() : inclip.converttoy8()
 
-input = defined(source) && !sisupscale ? input.pointresize(width(input),height(input)+8,0,-4,width(input),height(input)+8.0001) : input
+sode  = defined(source)
 
-source = defined(source) ? sisupscale || sislumaonly ? source : sisphbd ? source.converttoy() : source.converttoy8() : source
+source = sode ? sisupscale || sislumaonly ? source : sisphbd ? source.converttoy() : source.converttoy8() : source
 
-source = defined(source) && !sisupscale ? source.pointresize(width(source),height(source)+8,0,-4,width(source),height(source)+8.0001) : source
-
-Assert(!isYUY2(input), chr(10) + "not work with an YUY2 clip !" + chr(10))
+Assert(!isYUY2(input), chr(10) + "LSFmod: not work with an YUY2 clip !" + chr(10))
 
 ### SHARP
 tmp  = ss_x > 1.0 || ss_y > 1.0 ? input.spline36resize(xxs,yys) : input
 pre  = preblur=="OFF" ? tmp
-\    : preblur=="ON"  ? VersionNumber() < 2.6 ? tmp.mt_makediff( mt_lutxy(mt_makediff(tmp,tmp.removegrain(11,-1),U=1,V=1)
+\    : preblur=="ON"  ? !sisavs26 ? tmp.mt_makediff( mt_lutxy(mt_makediff(tmp,tmp.removegrain(11,-1),U=1,V=1)
 \                                       			,mt_makediff(tmp,tmp.removegrain(4,-1),U=1,V=1)
 \                                       			,"x 128 - y 128 - * 0 < 128 x 128 - abs y 128 - abs < x y ? ?",U=1,V=1) ,U=1,V=1) \
-					      : tmp.mt_makediff( mt_lutxy(mt_makediff(tmp,tmp.removegrain(11,-1),U=1,V=1)
+				  : tmp.mt_makediff( mt_lutxy(mt_makediff(tmp,tmp.removegrain(11,-1),U=1,V=1)
 \                                       			,mt_makediff(tmp,tmp.removegrain(4,-1),U=1,V=1)
 \                                       			,"x range_half - y range_half - * 0 < range_half x range_half - abs y range_half - abs < x y ? ?",use_expr=2,U=1,V=1) ,U=1,V=1)
 \    : eval("tmp."+preblur)
@@ -524,24 +527,24 @@ method = Smethod==1   ? pre.removegrain(kernel,-1)
 \      : Smethod==2   ? minmaxavg
 \      :                minmaxavg.removegrain(kernel,-1)
 
-method = secure==true ? VersionNumber() < 2.6 ? method.mt_lutxy(pre,"x y < x 1 + x y > x 1 - x ? ?",U=1,V=1) \
-					      : method.mt_lutxy(pre,"x y < x 1 scalef + x y > x 1 scalef - x ? ?",use_expr=2,U=1,V=1)
+method = secure==true ? !sisavs26 ? method.mt_lutxy(pre,"x y < x 1 + x y > x 1 - x ? ?",U=1,V=1) \
+				  : method.mt_lutxy(pre,"x y < x 1 scalef + x y > x 1 scalef - x ? ?",use_expr=2,U=1,V=1)
 \      :                method
 
 method = preblur=="OFF" ? method : tmp.mt_makediff(mt_makediff(pre,method,U=1,V=1),U=1,V=1)
 
 normsharp = Smode==1 ? tmp.unsharpmask(strength=int(str*100),radius=round(1.0+((ss_x+ss_y)/2.0)),threshold=0)
 \         : Smode==2 ? tmp.unsharp(strength=str,vary=((ss_x+ss_y)/2.0),varc=1,border=3,U=1,V=1)
-\         : Smode==3 ? VersionNumber() < 2.6 ? mt_lutxy(tmp, method, yexpr="x x y - "+string(str)+" * +",U=1,V=1) \
+\         : Smode==3 ? !sisavs26 ? mt_lutxy(tmp, method, yexpr="x x y - "+string(str)+" * +",U=1,V=1) \
 					     : mt_lutxy(tmp, method, yexpr="x x y - "+string(str)+" * +",use_expr=2,clamp_float=true,U=1,V=1)
-\         : Smode==4 ? VersionNumber() < 2.6 ? mt_lutxy(tmp, method, yexpr="x y == x x x y - abs "+string(Szrp)+" / 1 "+string(Spwr)+" / ^ "+string(Szrp)+" * "+string(str)+" * x y - 2 ^ x y - 2 ^ "
+\         : Smode==4 ? !sisavs26 ? mt_lutxy(tmp, method, yexpr="x y == x x x y - abs "+string(Szrp)+" / 1 "+string(Spwr)+" / ^ "+string(Szrp)+" * "+string(str)+" * x y - 2 ^ x y - 2 ^ "
 \                                                   			    +string(SdmpLo)+" + / * x y - x y - abs / * 1 "+string(SdmpHi)+" 0 == 0 x y - abs "+string(SdmpHi)+" / 4 ^ ? + / + ?",U=1,V=1) \
-					     : mt_lutxy(tmp, method, yexpr="x y == x x x y - abs "+string(Szrp) +" scalef / 1 "+string(Spwr)+" / ^ "+string(Szrp) +" scalef * "+string(str)+" * x y - 2 ^ x y - 2 ^ "
+				 : mt_lutxy(tmp, method, yexpr="x y == x x x y - abs "+string(Szrp) +" scalef / 1 "+string(Spwr)+" / ^ "+string(Szrp) +" scalef * "+string(str)+" * x y - 2 ^ x y - 2 ^ "
 \                                                   			    +string(SdmpLo)+" scalef scalef + / * x y - x y - abs / * 1 "+string(SdmpHi)+" scalef 0 == 0 x y - abs "+string(SdmpHi)+" scalef / 4 ^ ? + / + ?",use_expr=2,U=1,V=1)
-\         :            VersionNumber() < 2.6 ? mt_lutxy(tmp, method, yexpr="x y == x x x y - abs "+string(Szrp)+" / 1 "+string(Spwr)+" / ^ "+string(Szrp)+" * "+string(str)+" * x y - x y - abs / * x y - 2 ^ "
+\         :            !sisavs26 ? mt_lutxy(tmp, method, yexpr="x y == x x x y - abs "+string(Szrp)+" / 1 "+string(Spwr)+" / ^ "+string(Szrp)+" * "+string(str)+" * x y - x y - abs / * x y - 2 ^ "
 \                                                   			    +string(Szrp)+" 2 ^ "+string(SdmpLo)+" + * x y - 2 ^ "+string(SdmpLo)+" + "+string(Szrp)+" 2 ^ * / * 1 "
 \                                                   			    +string(SdmpHi)+" 0 == 0 "+string(Szrp)+" "+string(SdmpHi)+" / 4 ^ ? + 1 "+string(SdmpHi)+" 0 == 0 x y - abs "+string(SdmpHi)+" / 4 ^ ? + / * + ?",U=1,V=1) \
-					     : mt_lutxy(tmp, method, yexpr="x y == x x x y - abs "+string(Szrp)+" / 1 "+string(Spwr)+" / ^ "+string(Szrp)+" * "+string(str)+" * x y - x y - abs / * x y - 2 ^ "
+				 : mt_lutxy(tmp, method, yexpr="x y == x x x y - abs "+string(Szrp)+" / 1 "+string(Spwr)+" / ^ "+string(Szrp)+" * "+string(str)+" * x y - x y - abs / * x y - 2 ^ "
 \                                                   			    +string(Szrp)+" 2 ^ "+string(SdmpLo)+" + * x y - 2 ^ "+string(SdmpLo)+" + "+string(Szrp)+" 2 ^ * / * 1 "
 \                                                   			    +string(SdmpHi)+" 0 == 0 "+string(Szrp)+" "+string(SdmpHi)+" / 4 ^ ? + 1 "+string(SdmpHi)+" 0 == 0 x y - abs "+string(SdmpHi)+" / 4 ^ ? + / * + ?",U=1,V=1,use_expr=2,scale_inputs="allf")
 
@@ -556,10 +559,10 @@ edge  = edgemaskHQ ? mt_logic( tmp.mt_edge(thY1=0,thY2=255,"8 16 8 0 0 0 -8 -16 
 \                             ,"max",U=1,V=1)
 \     :              tmp.mt_edge(thY1=0,thY2=255,mode="min/max",U=1,V=1)
 
-edge  = edgemaskHQ ? VersionNumber() < 2.6 ? edge.mt_lut("x 128 / 0.86 ^ 255 *",U=1,V=1) \
-					   : edge.mt_lut("x range_half / 0.86 ^ range_max *",use_expr=2,scale_inputs="floatf",U=1,V=1)
-\     :              VersionNumber() < 2.6 ? edge.mt_lut("x 32 / 0.86 ^ range_max *",U=1,V=1) \
-					   : edge.mt_lut("x 32 scalef / 0.86 ^ range_max *",use_expr=2,scale_inputs="floatf",U=1,V=1)
+edge  = edgemaskHQ ? !sisavs26 ? edge.mt_lut("x 128 / 0.86 ^ 255 *",U=1,V=1) \
+			       : edge.mt_lut("x range_half / 0.86 ^ range_max *",use_expr=2,scale_inputs="floatf",U=1,V=1)
+\     :              !sisavs26 ? edge.mt_lut("x 32 / 0.86 ^ range_max *",U=1,V=1) \
+			       : edge.mt_lut("x 32 scalef / 0.86 ^ range_max *",use_expr=2,scale_inputs="floatf",U=1,V=1)
 
 limit1 = Lmode<0  ? normsharp.repair(tmp,abs(Lmode),-1)
 \      : Lmode==0 ? normsharp
@@ -575,9 +578,9 @@ limit2 = edgemode==0 ? limit1
 
 ### SOFT
 sharpdiff = mt_makediff(tmp,limit2,U=1,V=1)
-sharpdiff = VersionNumber() < 2.6 ? mt_lutxy(sharpdiff,sharpdiff.removegrain(19,-1),
+sharpdiff = !sisavs26 ? mt_lutxy(sharpdiff,sharpdiff.removegrain(19,-1),
 \                    			     "x 128 - abs y 128 - abs > y "+string(soft)+" * x "+string(100-soft)+" * + 100 / x ?",U=1,V=1) \
-				  : mt_lutxy(sharpdiff,sharpdiff.removegrain(19,-1),
+		      : mt_lutxy(sharpdiff,sharpdiff.removegrain(19,-1),
 \                    			     "x range_half - abs y range_half - abs > y "+string(soft)+" * x "+string(100-soft)+" * + 100 / x ?",use_expr=2,clamp_float=true,U=1,V=1)
 
 PP1 = soft==0 ? limit2 : mt_makediff(tmp,sharpdiff,U=1,V=1)
@@ -586,9 +589,9 @@ PP1 = soft==0 ? limit2 : mt_makediff(tmp,sharpdiff,U=1,V=1)
 ### SOOTHE
 diff  = mt_makediff(tmp,PP1,U=1,V=1)
 diff2 = diff.temporalsoften(1,255,0,32,2)
-diff3 = VersionNumber() < 2.6 ? mt_lutxy(diff,diff2,"x 128 - y 128 - * 0 < x 128 - 100 / "+string(keep)+
+diff3 = !sisavs26 ? mt_lutxy(diff,diff2,"x 128 - y 128 - * 0 < x 128 - 100 / "+string(keep)+
 \                           			    " * 128 + x 128 - abs y 128 - abs > x "+string(keep)+" * y 100 "+string(keep)+" - * + 100 / x ? ?",U=1,V=1) \
-			      : mt_lutxy(diff,diff2,"x range_half - y range_half - * 0 < x range_half - 100 / "+string(keep)+
+		  : mt_lutxy(diff,diff2,"x range_half - y range_half - * 0 < x range_half - 100 / "+string(keep)+
 \                           			    " * range_half + x range_half - abs y range_half - abs > x "+string(keep)+" * y 100 "+string(keep)+" - * + 100 / x ? ?",use_expr=2,clamp_float=true,U=1,V=1)
 
 PP2 = soothe ? mt_makediff(tmp,diff3,U=1,V=1) : PP1
@@ -596,23 +599,23 @@ PP2 = soothe ? mt_makediff(tmp,diff3,U=1,V=1) : PP1
 
 ### OUTPUT
 out = sisupscale ? tmp.mergeluma(PP2).spline36resize(dest_x,dest_y)
-\   : (ss_x > 1.0 || ss_y > 1.0)     ? input.mergeluma(PP2.spline36resize(dest_x,dest_y))
-\   :                                  input.mergeluma(PP2)
+\   : (ss_x > 1.0 || ss_y > 1.0)     ? sisavs26 ? PP2.spline36resize(dest_x,dest_y) : input.mergeluma(PP2.spline36resize(dest_x,dest_y))
+\   :                                  sisavs26 ? PP2 : input.mergeluma(PP2)
 
-src = defined(source)==false         ? nop()
+src = !sode      ? nop()
 \   : sisupscale ? source.spline36resize(dest_x,dest_y)
 \   :                                  source
 in  = sisupscale ? input.spline36resize(dest_x,dest_y)
 \   :                                  input
 
 shrpD  = mt_makediff(in,out,U=1,V=1)
-shrpL  = defined(source) ? VersionNumber() < 2.6 ? shrpD.repair(mt_makediff(in,src,U=1,V=1),1,-1,-1).mt_lutxy(shrpD,"x 128 - abs y 128 - abs < x y ?",U=1,V=1) \
-			       : shrpD.repair(mt_makediff(in,src,U=1,V=1),1,-1,-1).mt_lutxy(shrpD,"x range_half - abs y range_half - abs < x y ?",use_expr=1,U=1,V=1) : nop()
-output = defined(source) ? mt_makediff(in,shrpL,U=2,V=2)
+shrpL  = sode ? !sisavs26 ? shrpD.Padding(4,4,4,4).repair(mt_makediff(in,src,U=1,V=1).Padding(4,4,4,4),1,-1,-1).crop(4,4,-4,-4,true).mt_lutxy(shrpD,"x 128 - abs y 128 - abs < x y ?",U=1,V=1) \
+			  : shrpD.Padding(4,4,4,4).repair(mt_makediff(in,src,U=1,V=1).Padding(4,4,4,4),1,-1,-1).crop(4,4,-4,-4,true).mt_lutxy(shrpD,"x range_half - abs y range_half - abs < x y ?",use_expr=1,U=1,V=1) : nop()
+output = sode ? mt_makediff(in,shrpL,U=2,V=2)
 \      :                   out
 
 output = edgemode!=-1    ? output
-\      :                   edge.spline36resize(dest_x,dest_y).greyscale()
+\      :                   sisavs26 && !sisupscale ? edge.spline36resize(dest_x,dest_y) : edge.spline36resize(dest_x,dest_y).greyscale()
 
 
 ### SHOW
@@ -636,12 +639,12 @@ output = edgemode!=-1    ? output
    scale = resoH - ( 2 * outH )
 
    i = input.spline36resize(outW,outH)
-   i = scale > 0 ? i.addborders(0,scale/4,0,scale/4) : i
-   i = scale < 0 ? i.crop(0,-scale/4,0,scale/4) : i
+   i = scale > 0 ? i.addborders(0,scale/4,0,scale/4,true) : i
+   i = scale < 0 ? i.crop(0,-scale/4,0,scale/4,true) : i
 
    o = output.spline36resize(outW,outH)
-   o = scale > 0 ? o.addborders(0,scale/4,0,scale/4) : o
-   o = scale < 0 ? o.crop(0,-scale/4,0,scale/4) : o
+   o = scale > 0 ? o.addborders(0,scale/4,0,scale/4,true) : o
+   o = scale < 0 ? o.crop(0,-scale/4,0,scale/4,true) : o
 
    e = blankclip(input, width=384, height=resoH)
    e = e.SubTitle("LSFmod " + string(version)                ,text_color=$FFFFFF,font="COURIER NEW",size=24,x=40,y=40)
@@ -707,14 +710,12 @@ output = edgemode!=-1    ? output
    return debug
    }
 
-output = defined(source) ? output.crop(0,4,-0,-4) : output
-
 output = sisupscale || sislumaonly ? output : sisphbd ? CombinePlanes(output,inclip,planes="YUV",sample_clip=inclip) : ytouv(inclip.utoy8(),inclip.vtoy8(),output)
 
 output = show==false ? output
 \                    : LSFM_Show(inclip, output, version, defaults,
 \                                strength, Smode, Smethod, kernel,
-\                                preblur, secure, defined(source)?"defined":"undefined",
+\                                preblur, secure, sode?"defined":"undefined",
 \                                Szrp, Spwr, SdmpLo, SdmpHi,
 \                                Lmode, overshoot, undershoot, overshoot2, undershoot2,
 \                                soft, soothe, keep,
