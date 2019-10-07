@@ -8,13 +8,15 @@
 ###                                                                                          ###
 ###                            another Modded Version by A.SONY.                             ###
 ###                                                                                          ###
-###                                v2.184 - 18 September 2019                                ###
+###                                v2.185 - 19 September 2019                                ###
 ###                                                                                          ###
 ################################################################################################
 ###
 ### +-----------+
 ### | CHANGELOG |
 ### +-----------+
+###
+### v2.185 : - new avs26_optimize (bool) true by default, you can set it to false for smode=1 and smode=2 since not all filter updated to avs 2.6 colors
 ###
 ### v2.184 : - some fix when using soruce and make sure it will not work with RGB
 ###
@@ -411,13 +413,13 @@ function LSFmod( clip inclip, float "strength", int "Smode", int "Smethod", int 
 \                int "edgemode", bool "edgemaskHQ",
 \                float "ss_x", float "ss_y", int "dest_x", int "dest_y",
 \                bool "show", int "screenW", int "screenH",
-\                string "defaults" )
+\                string "defaults", bool "avs26_optimize" )
 {
 
 sisphbd = AvsPlusVersionNumber > 2294
 
 ### DEFAULTS
-version  = "v2.184"
+version  = "v2.185"
 defaults = default(defaults,"fast")
 num      = defaults=="old" ? 0 : defaults=="slow" ? 1 : defaults=="fast" ? 2 : 3
 
@@ -494,11 +496,13 @@ sisyuy2 = inclip.isyuy2()
 
 sisavs26 = !(VersionNumber() < 2.6)
 
+avs26op  = default(avs26_optimize, true)
+
 sisupscale = (dest_x != ox || dest_y != oy)
 
 inclip = !sisupscale && sisyuy2 && sisphbd ? inclip.converttoyv16() : inclip
 
-sislumaonly = sisphbd ? inclip.isy() : sisavs26 ? inclip.isy8() : true
+sislumaonly = avs26op ? sisphbd ? inclip.isy() : sisavs26 ? inclip.isy8() : true : true
  
 input = sisupscale || sislumaonly ? inclip : sisphbd ? inclip.converttoy() : inclip.converttoy8()
 
